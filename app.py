@@ -56,7 +56,9 @@ def create_pdf(dme_table, rod_table):
         pdf.cell(50, 10, f'{row["Time(min)"]:.2f}', 1)
         pdf.ln()
 
-    return pdf.output(dest='S').encode("utf-8", errors="replace")
+    pdf_buffer = BytesIO()
+pdf.output(pdf_buffer)
+return pdf_buffer.getvalue()
 
 def plot_profile(dme_table, mda):
     distances = [row["Distance"] for row in dme_table]
