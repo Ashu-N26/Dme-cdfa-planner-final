@@ -71,7 +71,7 @@ st.dataframe(rod_df)
 # Chart
 st.subheader("📈 Visual Descent Profile")
 fig, ax = plt.subplots()
-ax.plot([p["Distance"] for p in dme_df], [p["Altitude"] for p in dme_df], marker='o')
+ax.plot(dme_df["Distance"], dme_df["Altitude"], marker='o')
 for p in dme_df.itertuples():
     label = p.Label if p.Label else ""
     ax.annotate(label, (p.Distance, p.Altitude), textcoords="offset points", xytext=(0,5), ha='center')
