@@ -133,7 +133,6 @@ if st.button("Generate Descent Plan"):
     ax.set_ylabel("Altitude (ft)")
     ax.set_title("CDFA Profile View")
     ax.invert_xaxis()
-    ax.invert_yaxis()
     st.pyplot(fig)
 
     # Export
