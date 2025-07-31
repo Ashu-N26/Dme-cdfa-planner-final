@@ -95,15 +95,28 @@ rod_df = pd.DataFrame({
 st.dataframe(rod_df)
 
 # Chart
+# Updated Visual Descent Profile with MDA line and plotted fix labels
 st.subheader("📈 Visual Descent Profile")
 fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(dme_df["Distance (NM)"], dme_df["Altitude (ft)"], marker='o')
-for p in dme_df.itertuples():
-    if p.Fix:
-        ax.annotate(p.Fix, (p._1, p._2), textcoords="offset points", xytext=(0, 5), ha='center')
+
+# Plot the descent path with markers
+ax.plot(dme_df["Distance (NM)"], dme_df["Altitude (ft)"], marker='o', linestyle='-', color='blue', label="Descent Path")
+
+# Plot fix points with labels
+for point in dme_df.itertuples():
+    if point.Fix:
+        ax.plot(point._1, point._2, 'ro')  # Red marker at fix
+        ax.annotate(point.Fix, (point._1, point._2), textcoords="offset points", xytext=(0, 5), ha='center', fontsize=9)
+
+# Add red horizontal line for MDA
+ax.axhline(y=mda, color='red', linestyle='--', linewidth=1.5, label="MDA")
+
+# Axes labels and legend
 ax.set_xlabel("DME Distance (NM)")
 ax.set_ylabel("Altitude (ft)")
 ax.grid(True)
+ax.legend()
+
 st.pyplot(fig)
 
 # Export to PDF
