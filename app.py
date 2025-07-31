@@ -121,7 +121,8 @@ def create_pdf(dme_df, rod_df):
     pdf.cell(0, 10, "DME Table:", ln=True)
     pdf.set_font("Arial", "", 11)
     for row in dme_df.itertuples(index=False):
-        pdf.cell(0, 8, f"DME: {row[0]} NM Alt: {row[1]} ft Fix: {row[2]}", ln=True)
+        fix_label = row[2] if row[2] else ""
+        pdf.cell(0, 8, f"DME: {row[0]} NM    Alt: {row[1]} ft    Fix: {fix_label}", ln=True)
 
     # ROD Table
     pdf.ln(5)
@@ -129,9 +130,9 @@ def create_pdf(dme_df, rod_df):
     pdf.cell(0, 10, "ROD Table:", ln=True)
     pdf.set_font("Arial", "", 11)
     for row in rod_df.itertuples(index=False):
-        pdf.cell(0, 8, f"GS: {row[0]} kt ROD: {row[1]} ft/min Time: {row[2]} min", ln=True)
+        pdf.cell(0, 8, f"GS: {row[0]} kt    ROD: {row[1]} ft/min    Time: {row[2]} min", ln=True)
 
-    return pdf.output(dest='S').encode('latin1')
+    return pdf.output(dest='S').encode('latin1', 'ignore')
 
 pdf_bytes = create_pdf(dme_df, rod_df)
 st.download_button("📄 Download PDF", pdf_bytes, file_name="dme_cdfa_report.pdf")
