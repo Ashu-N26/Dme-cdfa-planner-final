@@ -89,7 +89,7 @@ def create_pdf(dme_df, rod_df):
         pdf.cell(60, 10, row["Time FAF→MAPt"], 1)
         pdf.ln()
 
-    return pdf.output(dest='S').encode('latin1')
+    return pdf.output(dest='S').encode('latin1', errors='replace')
 
 # Streamlit UI
 st.title("🛬 DME/CDFA Descent Planner Tool")
