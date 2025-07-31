@@ -1,150 +1,164 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import math
 import matplotlib.pyplot as plt
+import math
 from fpdf import FPDF
 from io import BytesIO
 
-st.set_page_config(page_title="DME/CDFA Descent Planner", layout="centered")
+def calculate_gp_gradient(faf_alt, mda, distance_nm):
+    height_diff = faf_alt - mda
+    if distance_nm > 0:
+        angle_rad = math.atan(height_diff / (distance_nm * 6076.12))
+        angle_deg = math.degrees(angle_rad)
+        gradient_ft_per_nm = height_diff / distance_nm
+        gradient_percent = (height_diff / (distance_nm * 6076.12)) * 100
+    else:
+        angle_deg = 0
+        gradient_ft_per_nm = 0
+        gradient_percent = 0
+    return round(angle_deg, 2), round(gradient_ft_per_nm), round(gradient_percent, 2)
 
-# Utility: Calculate slant-range DME distance
-def slant_range_dme(horizontal_distance_nm, altitude_ft):
-    return math.sqrt(horizontal_distance_nm**2 + (altitude_ft / 6076.12)**2)
-
-# GP angle (°) = arctan(height / distance)
-def calculate_gp_angle(thr_elevation, tod_altitude, dme_distance_nm):
-    height_diff_ft = tod_altitude - thr_elevation
-    return math.degrees(math.atan(height_diff_ft / (dme_distance_nm * 6076.12)))
-
-def round_to_10(x):
-    return int(round(x / 10.0) * 10)
-
-def generate_dme_table(thr_elevation, tod_altitude, dme_at_thr, mda, sdf_inputs):
-    total_distance = dme_at_thr
-    distances = np.linspace(dme_at_thr, 0.5, 8)
-
-    gp_angle = calculate_gp_angle(thr_elevation, tod_altitude, total_distance)
-
-    table = []
-    for dme in distances:
-        slant_dme = slant_range_dme(dme, tod_altitude - thr_elevation)
-        altitude = thr_elevation + math.tan(math.radians(gp_angle)) * slant_dme * 6076.12
-        altitude = max(altitude, mda)
-        label = ""
-        for i, sdf in enumerate(sdf_inputs):
-            if sdf and abs(dme - sdf["Distance"]) < 0.15:
-                label = f"SDF{i+1}"
-                altitude = sdf["Altitude"]
-        if abs(dme - dme_at_thr) < 0.15:
-            label = "FAF"
-        elif dme < 0.7:
-            label = "MAPt"
-        table.append({"DME": round(dme, 2), "Altitude": int(altitude), "Fix": label})
-    return table, gp_angle
-
-def generate_rod_table(gp_angle_deg, faf_mapt_distance):
-    ground_speeds = [80, 100, 120, 140, 160]
-    rod_table = []
-    for gs in ground_speeds:
-        rod = round_to_10(gs * 101.3 * math.tan(math.radians(gp_angle_deg)))
-        time_min = faf_mapt_distance / gs * 60
-        rod_table.append({"GS": gs, "ROD (ft/min)": rod, "Time FAF→MAPt": f"{int(time_min)}:{int((time_min%1)*60):02d}"})
-    return rod_table
-
-# PDF generation
-def create_pdf(dme_df, rod_df):
+def create_pdf(dme_table, rod_table):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=14)
-    pdf.cell(200, 10, txt="DME/CDFA Descent Planner Report", ln=True, align='C')
-    pdf.set_font("Arial", size=12)
-    pdf.ln(10)
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, "DME/CDFA Descent Planner Report", ln=1, align="C")
 
-    # DME Table
-    pdf.cell(200, 10, txt="DME Table (8-Point Descent Profile):", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(60, 10, "DME (NM)", 1)
-    pdf.cell(60, 10, "Altitude (ft)", 1)
-    pdf.cell(60, 10, "Fix", 1)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "DME Table", ln=1)
+
+    pdf.set_font("Arial", "", 11)
+    pdf.cell(40, 10, "Fix", 1)
+    pdf.cell(40, 10, "Distance (NM)", 1)
+    pdf.cell(40, 10, "Altitude (ft)", 1)
+    pdf.cell(40, 10, "Type", 1)
     pdf.ln()
-    for row in dme_df:
-        pdf.cell(60, 10, str(row["DME"]), 1)
-        pdf.cell(60, 10, str(row["Altitude"]), 1)
-        pdf.cell(60, 10, row["Fix"], 1)
+    for row in dme_table:
+        pdf.cell(40, 10, row["Fix"], 1)
+        pdf.cell(40, 10, f'{row["Distance"]:.2f}', 1)
+        pdf.cell(40, 10, str(int(row["Altitude"])), 1)
+        pdf.cell(40, 10, row["Type"], 1)
         pdf.ln()
 
-    # ROD Table
-    pdf.ln(10)
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="ROD Table (FAF to MAPt):", ln=True)
-    pdf.set_font("Arial", size=11)
-    pdf.cell(40, 10, "GS (kts)", 1)
-    pdf.cell(60, 10, "ROD (ft/min)", 1)
-    pdf.cell(60, 10, "Time FAF→MAPt", 1)
     pdf.ln()
-    for row in rod_df:
-        pdf.cell(40, 10, str(row["GS"]), 1)
-        pdf.cell(60, 10, str(row["ROD (ft/min)"]), 1)
-        pdf.cell(60, 10, row["Time FAF→MAPt"], 1)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, "ROD Table", ln=1)
+
+    pdf.set_font("Arial", "", 11)
+    pdf.cell(50, 10, "Ground Speed (kt)", 1)
+    pdf.cell(50, 10, "ROD (fpm)", 1)
+    pdf.cell(50, 10, "Time FAF–MAPt (min)", 1)
+    pdf.ln()
+    for row in rod_table:
+        pdf.cell(50, 10, str(row["GS"]), 1)
+        pdf.cell(50, 10, str(row["ROD"]), 1)
+        pdf.cell(50, 10, f'{row["Time(min)"]:.2f}', 1)
         pdf.ln()
 
-    return pdf.output(dest='S').encode('latin1', errors='replace')
+    return pdf.output(dest='S').encode("latin1", errors="replace")
 
-# Streamlit UI
+def plot_profile(dme_table, mda):
+    distances = [row["Distance"] for row in dme_table]
+    altitudes = [row["Altitude"] for row in dme_table]
+    labels = [row["Fix"] for row in dme_table]
+
+    fig, ax = plt.subplots()
+    ax.plot(distances, altitudes, marker='o', linestyle='-', color='blue')
+    ax.axhline(mda, color='red', linestyle='--', label='MDA')
+    for i, label in enumerate(labels):
+        ax.text(distances[i], altitudes[i] + 50, label, ha='center', fontsize=8)
+    ax.set_title("CDFA Profile View")
+    ax.set_xlabel("Distance (NM)")
+    ax.set_ylabel("Altitude (ft)")
+    ax.grid(True)
+    ax.legend()
+    return fig
+
+st.set_page_config(page_title="DME/CDFA Descent Planner", layout="centered")
 st.title("🛬 DME/CDFA Descent Planner Tool")
 
 col1, col2 = st.columns(2)
 with col1:
-    thr_elevation = st.number_input("Threshold Elevation (ft)", value=150)
-    tod_altitude = st.number_input("Top of Descent Altitude (ft)", value=3000)
-    mda = st.number_input("Minimum Descent Altitude (MDA) (ft)", value=670)
+    elevation = st.number_input("Runway Threshold Elevation (ft)", value=100)
+    mda = st.number_input("MDA (Minimum Descent Altitude)", value=1200)
+    tod_distance = st.number_input("Top of Descent Distance (from THR, NM)", value=7.0, step=0.1)
+    dme_at_thr = st.number_input("DME Distance at THR (NM)", value=0.5, step=0.1)
 with col2:
-    dme_at_thr = st.number_input("DME Reading at Threshold (NM)", value=5.5)
-    faf_mapt_distance = st.number_input("FAF to MAPt Distance (NM)", value=5.5)
+    lat = st.text_input("Latitude", value="N00°00.00'")
+    lon = st.text_input("Longitude", value="E000°00.00'")
+    dme_lat = st.text_input("DME Latitude", value="N00°00.00'")
+    dme_lon = st.text_input("DME Longitude", value="E000°00.00'")
+    faf_to_mapt_nm = st.number_input("FAF to MAPt Distance (NM)", value=5.0, step=0.1)
+    faf_altitude = st.number_input("FAF Altitude (ft)", value=3000)
 
-sdf_inputs = []
-for i in range(6):
-    with st.expander(f"Optional Step-Down Fix SDF{i+1}"):
-        alt = st.number_input(f"SDF{i+1} Altitude (ft)", value=0, key=f"sdf_alt_{i}")
-        dist = st.number_input(f"SDF{i+1} Distance (NM)", value=0.0, key=f"sdf_dist_{i}")
-        if alt > 0 and dist > 0:
-            sdf_inputs.append({"Altitude": alt, "Distance": dist})
-        else:
-            sdf_inputs.append(None)
+st.markdown("### Optional Step-Down Fixes (SDFs)")
+sdfs = []
+for i in range(1, 7):
+    col1, col2 = st.columns(2)
+    with col1:
+        dist = st.number_input(f"SDF {i} Distance (NM)", value=0.0, step=0.1, key=f"sdf_dist_{i}")
+    with col2:
+        alt = st.number_input(f"SDF {i} Altitude (ft)", value=0, key=f"sdf_alt_{i}")
+    if dist > 0 and alt > 0:
+        sdfs.append({"Distance": dist, "Altitude": alt, "Fix": f"SDF{i}", "Type": "SDF"})
 
-if st.button("Generate Descent Plan"):
-    dme_table, gp_angle = generate_dme_table(thr_elevation, tod_altitude, dme_at_thr, mda, sdf_inputs)
-    rod_table = generate_rod_table(gp_angle, faf_mapt_distance)
+if st.button("Generate DME & ROD Tables"):
+    gp_angle, descent_ft_per_nm, descent_percent = calculate_gp_gradient(faf_altitude, mda, faf_to_mapt_nm)
 
-    st.subheader("DME Descent Table")
-    st.table(pd.DataFrame(dme_table))
+    st.subheader("Glide Path & Gradient Info")
+    st.markdown(f"**GP Angle:** {gp_angle:.2f}°")
+    st.markdown(f"**Descent Gradient:** {descent_ft_per_nm} ft/NM ({descent_percent:.2f}%)")
 
-    st.subheader("ROD Table (FAF to MAPt)")
-    st.table(pd.DataFrame(rod_table))
+    dme_table = []
+    dme_start = dme_at_thr + tod_distance
+    dme_end = dme_at_thr
+    dme_step = (dme_start - dme_end) / 7
 
-    # Chart
-    fig, ax = plt.subplots()
-    ax.plot([p["DME"] for p in dme_table], [p["Altitude"] for p in dme_table], marker='o', color='blue')
-    ax.axhline(y=mda, color='red', linestyle='--', label='MDA')
-    for p in dme_table:
-        ax.annotate(p["Fix"], (p["DME"], p["Altitude"]), textcoords="offset points", xytext=(0,10), ha='center')
-    ax.set_xlabel("DME (NM)")
-    ax.set_ylabel("Altitude (ft)")
-    ax.set_title("CDFA Profile View")
-    ax.invert_xaxis()
+    current_alt = elevation + math.tan(math.radians(gp_angle)) * (dme_start * 6076.12)
+    for i in range(8):
+        dist = dme_start - i * dme_step
+        alt = current_alt - i * descent_ft_per_nm * dme_step
+        alt = max(alt, mda)
+        dme_table.append({
+            "Fix": f"DME{i+1}",
+            "Distance": round(dist, 2),
+            "Altitude": int(round(alt)),
+            "Type": "Generated"
+        })
+
+    dme_table[0]["Fix"] = "FAF"
+    dme_table[-1]["Fix"] = "MAPT"
+
+    for sdf in sdfs:
+        dme_table.append(sdf)
+    dme_table = sorted(dme_table, key=lambda x: x["Distance"], reverse=True)
+
+    st.subheader("DME Table")
+    dme_df = pd.DataFrame(dme_table)
+    st.dataframe(dme_df)
+
+    rod_table = []
+    gs_list = [80, 100, 120, 140, 160]
+    for gs in gs_list:
+        time_min = faf_to_mapt_nm / gs * 60
+        rod = (faf_altitude - mda) / time_min if time_min > 0 else 0
+        rod_table.append({
+            "GS": gs,
+            "ROD": int(round(rod, -1)),
+            "Time(min)": round(time_min, 2)
+        })
+
+    st.subheader("Rate of Descent Table (FAF to MAPT)")
+    rod_df = pd.DataFrame(rod_table)
+    st.dataframe(rod_df)
+
+    st.subheader("Descent Profile View")
+    fig = plot_profile(dme_table, mda)
     st.pyplot(fig)
 
-    # Export
+    st.download_button("Download DME Table CSV", data=dme_df.to_csv(index=False), file_name="dme_table.csv")
+    st.download_button("Download ROD Table CSV", data=rod_df.to_csv(index=False), file_name="rod_table.csv")
+
     pdf_bytes = create_pdf(dme_table, rod_table)
-    st.download_button("📄 Download PDF Report", data=pdf_bytes, file_name="CDFA_Descent_Report.pdf")
-
-    # CSV Export
-    dme_df = pd.DataFrame(dme_table)
-    rod_df = pd.DataFrame(rod_table)
-    csv_dme = dme_df.to_csv(index=False).encode('utf-8')
-    csv_rod = rod_df.to_csv(index=False).encode('utf-8')
-    st.download_button("📁 Download DME Table (CSV)", data=csv_dme, file_name="DME_Table.csv")
-    st.download_button("📁 Download ROD Table (CSV)", data=csv_rod, file_name="ROD_Table.csv")
-
-
+    st.download_button("Download Full PDF Report", data=pdf_bytes, file_name="CDFA_Report.pdf", mime='application/pdf')
